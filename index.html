@@ -954,25 +954,17 @@
     btn.classList.add("has-help");
     btn.setAttribute("aria-label", btn.getAttribute("aria-label") + ", hold inne for forklaring");
 
-    var timer = null, fired = false, sx = 0, sy = 0;
+    var timer = null, sx = 0, sy = 0;
     function cancel(){ clearTimeout(timer); timer = null; }
 
-    btn.addEventListener("click", function(ev){
-      if (fired){
-        fired = false;
-        ev.stopImmediatePropagation();
-        ev.preventDefault();
-      }
-    }, true);
-
     btn.addEventListener("pointerdown", function(ev){
-      fired = false; sx = ev.clientX; sy = ev.clientY;
+      btn.dataset.helpFired = "0";
+      sx = ev.clientX; sy = ev.clientY;
       cancel();
       timer = setTimeout(function(){
-        fired = true;
+        btn.dataset.helpFired = "1";
         if (state.haptics && navigator.vibrate) navigator.vibrate([0, 14]);
         openInfo(help);
-        setTimeout(function(){ fired = false; }, 700);
       }, 420);
     });
     btn.addEventListener("pointermove", function(ev){
@@ -992,7 +984,17 @@
       b.innerHTML = k.label;
       b.setAttribute("aria-label", k.aria || b.textContent);
       if (k.id) b.dataset.id = k.id;
-      b.addEventListener("click", function(){ press(k); });
+      /* Digits og operatorer reagerer på pointerdown, som kommer før click og gir
+         umiddelbar respons. Taster med forklaring venter til fingeren slippes,
+         slik at et langt trykk ikke også setter inn et tegn. */
+      var hasHelp = !!helpFor(k);
+      b.addEventListener(hasHelp ? "pointerup" : "pointerdown", function(ev){
+        if (ev.button && ev.button !== 0) return;
+        if (b.dataset.helpFired === "1"){ b.dataset.helpFired = "0"; return; }
+        press(k);
+      });
+      /* tastaturbruk: click uten peker (detail 0) */
+      b.addEventListener("click", function(ev){ if (ev.detail === 0) press(k); });
       attachHelp(b, k);
       container.appendChild(b);
     });
@@ -1222,21 +1224,47 @@
     el.angle.classList.toggle("show", document.documentElement.getAttribute("data-sci") === "1" && !state.deg);
   }
 
+  /* Tekstbredden måles på et lerret i stedet for å krympe skriften steg for steg.
+     Da holder det med én layoutlesing per tastetrykk i stedet for nær 30. */
+  var measure = (function(){
+    try { return document.createElement("canvas").getContext("2d"); }
+    catch (e){ return null; }
+  })();
+  var metrics = { font: "", resultWidth: 0, exprWidth: 0, base: 0 };
+
+  function cacheMetrics(){
+    var cs = window.getComputedStyle(el.result);
+    metrics.font = cs.fontWeight + " {size}px " + cs.fontFamily;
+    metrics.resultWidth = el.result.clientWidth;
+    metrics.exprWidth = el.expr.clientWidth;
+    metrics.base = Math.min(64, Math.round(window.innerWidth * 0.165));
+  }
+
+  function widthAt(text, size){
+    measure.font = metrics.font.replace("{size}", size);
+    /* letter-spacing på -0,025em finnes ikke på lerretet, så den trekkes fra manuelt */
+    return measure.measureText(text).width - 0.025 * size * Math.max(0, text.length - 1);
+  }
+
   function fit(){
-    var base = Math.min(64, Math.round(window.innerWidth * 0.165));
-    var size = base;
-    el.result.style.fontSize = size + "px";
-    var guard = 0;
-    while (el.result.scrollWidth > el.result.clientWidth + 1 && size > 17 && guard < 60){
-      size -= 1; guard++;
-      el.result.style.fontSize = size + "px";
+    if (!measure){ el.result.style.fontSize = ""; return; }
+    if (!metrics.resultWidth) cacheMetrics();
+    var text = el.result.textContent;
+    var size = metrics.base;
+    if (text){
+      var w = widthAt(text, size);
+      if (w > metrics.resultWidth){
+        size = Math.max(17, Math.floor(size * (metrics.resultWidth / w)));
+      }
     }
-    var over = el.result.scrollWidth > el.result.clientWidth + 1;
+    el.result.style.fontSize = size + "px";
+    var over = text ? widthAt(text, size) > metrics.resultWidth + 1 : false;
     el.result.classList.toggle("clipped", over);
     if (over) el.result.scrollLeft = el.result.scrollWidth;
 
-    var exprOver = el.expr.scrollWidth > el.expr.clientWidth + 1;
+    var exprOver = el.expr.scrollWidth > metrics.exprWidth + 1;
     el.expr.classList.toggle("clipped", exprOver);
+    if (exprOver) el.expr.scrollLeft = el.expr.scrollWidth;
   }
 
   function missingParens(){
@@ -1261,7 +1289,6 @@
         el.expr.appendChild(ghost);
       }
     }
-    el.expr.scrollLeft = el.expr.scrollWidth;
 
     if (state.settled){
       el.result.className = "";
@@ -1464,7 +1491,7 @@
     el.handle.setAttribute("aria-label", open ? "Vis flere funksjoner" : "Skjul flere funksjoner");
     el.sci.setAttribute("aria-hidden", String(open));
     renderAngle();
-    setTimeout(fit, 320);
+    setTimeout(function(){ cacheMetrics(); fit(); }, 320);
   });
   document.documentElement.setAttribute("data-sci", "0");
 
@@ -1558,7 +1585,8 @@
     if (KEYMAP[k]) { press(KEYMAP[k]); ev.preventDefault(); }
   });
 
-  window.addEventListener("resize", fit);
+  window.addEventListener("resize", function(){ cacheMetrics(); fit(); });
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", function(){ cacheMetrics(); fit(); });
 
   /* ---------- installerbarhet ---------- */
   (function(){
