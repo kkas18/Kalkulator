@@ -25,7 +25,7 @@
     --hair:rgba(0,0,0,.07);
     --sheet:#F6F7F8;
     --scrim:rgba(18,19,22,.32);
-    --r-key:24px;
+    --r-key:22px;
     --gap:8px;
   }
   html[data-theme="dark"]{
@@ -105,9 +105,16 @@
   #expr::-webkit-scrollbar{display:none}
   #result{
     width:100%;text-align:right;
-    font-size:60px;font-weight:300;letter-spacing:-.025em;line-height:1.1;
-    white-space:nowrap;overflow:hidden;
+    font-size:60px;font-weight:300;letter-spacing:-.025em;line-height:1.15;
+    white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+    padding-left:2px;
     transition:color .2s ease;
+  }
+  #result::-webkit-scrollbar{display:none}
+  /* venstre uttoning viser at tallet fortsetter utenfor kanten */
+  #expr.clipped,#result.clipped{
+    -webkit-mask-image:linear-gradient(to right,transparent 0,#000 26px);
+    mask-image:linear-gradient(to right,transparent 0,#000 26px);
   }
   #result.preview{color:var(--muted);font-weight:300}
   #result.error{font-size:20px;font-weight:400;color:var(--muted);letter-spacing:0}
@@ -134,41 +141,41 @@
     overflow:hidden;max-height:0;opacity:0;margin-bottom:0;
     transition:max-height .3s cubic-bezier(.3,.8,.3,1),opacity .22s ease,margin-bottom .3s ease;
   }
-  html[data-sci="1"] #sci{max-height:172px;opacity:1;margin-bottom:var(--gap)}
+  html[data-sci="1"] #sci{max-height:156px;opacity:1;margin-bottom:var(--gap)}
   #pad{
     flex:0 0 auto;
     display:grid;grid-template-columns:repeat(4,1fr);
     grid-auto-rows:minmax(0,1fr);gap:var(--gap);
-    height:min(58svh,476px);
+    height:min(51svh,418px);
   }
-  html[data-sci="1"] #pad{height:min(48svh,410px)}
+  html[data-sci="1"] #pad{height:min(43svh,360px)}
 
   .key{
     border:0;border-radius:var(--r-key);
     background:var(--surface);color:var(--ink);
-    font-family:inherit;font-size:28px;font-weight:400;letter-spacing:-.01em;
+    font-family:inherit;font-size:26px;font-weight:400;letter-spacing:-.01em;
     font-variant-numeric:tabular-nums;
     display:grid;place-items:center;cursor:pointer;
     transition:background-color .16s ease,transform .09s ease,color .16s ease;
   }
   .key:active{background:var(--surface-press);transform:scale(.955)}
   .key:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-  .key.fn{background:var(--surface-2);font-size:25px}
+  .key.fn{background:var(--surface-2);font-size:23px}
   .key.fn:active{background:var(--surface-2-press)}
-  .key.op{background:var(--surface-2);font-size:30px}
+  .key.op{background:var(--surface-2);font-size:28px}
   .key.op:active{background:var(--surface-2-press)}
   .key.eq{background:var(--ink);color:var(--ink-inv)}
   .key.eq:active{background:var(--ink);opacity:.82;transform:scale(.955)}
   .key svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 
   #sci .key{
-    border-radius:18px;background:transparent;color:var(--ink);
-    font-size:17px;font-weight:400;height:42px;
+    border-radius:16px;background:transparent;color:var(--ink);
+    font-size:16px;font-weight:400;height:38px;
   }
   #sci .key:active{background:var(--surface)}
   #sci .key.active{background:var(--surface-2);color:var(--ink)}
   /* blokk, ikke grid: ellers blir <sup> et eget grid-element og havner på egen linje */
-  #sci .key{display:block;text-align:center;line-height:42px;white-space:nowrap;padding:0}
+  #sci .key{display:block;text-align:center;line-height:38px;white-space:nowrap;padding:0}
   #sci .key sup{font-size:.6em;vertical-align:super;line-height:0}
 
   /* ---------- historikk ---------- */
@@ -266,10 +273,9 @@
   .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
   @media (max-height:700px){
-    #result{font-size:48px}
-    #pad{height:min(56svh,360px)}
-    .key{font-size:25px}
-    #sci .key{height:38px;line-height:38px}
+    #pad{height:min(52svh,340px)}
+    .key{font-size:24px}
+    #sci .key{height:35px;line-height:35px}
   }
   @media (prefers-reduced-motion:reduce){
     *{transition-duration:.01ms!important;animation-duration:.01ms!important}
@@ -493,10 +499,10 @@
     return round(value);
   }
 
-  /* 12 signifikante siffer fjerner flyttallsstøy (0,1 + 0,2). */
+  /* 14 signifikante siffer fjerner flyttallsstøy (0,1 + 0,2) uten å kutte inntastede tall. */
   function round(v){
     if (v === 0) return 0;
-    var r = parseFloat(v.toPrecision(12));
+    var r = parseFloat(v.toPrecision(14));
     return r === 0 ? 0 : r;
   }
 
@@ -522,7 +528,7 @@
   function formatNumber(v){
     if (v === 0) return "0";
     var abs = Math.abs(v);
-    if (abs >= 1e12 || abs < 1e-9){
+    if (abs >= 1e15 || abs < 1e-9){
       var parts = v.toExponential(6).split("e");
       var mant = parts[0].replace(/0+$/, "").replace(/\.$/, "").replace(".", ",").replace("-", "\u2212");
       var exp = parseInt(parts[1], 10);
@@ -937,9 +943,13 @@
     }
   }
 
+  var MAX_DIGITS = 14;
+  function digitCount(t){ return (String(t).match(/\d/g) || []).length; }
+
   function pushDigit(d){
     startFresh();
     var t = last();
+    if (C.isNum(t) && digitCount(t) >= MAX_DIGITS && t !== "0" && t !== "-0") return;
     if (C.isNum(t)){
       if (t === "0") state.tokens[state.tokens.length - 1] = d;
       else if (t === "-0") state.tokens[state.tokens.length - 1] = "-" + d;
@@ -1143,10 +1153,16 @@
     var size = base;
     el.result.style.fontSize = size + "px";
     var guard = 0;
-    while (el.result.scrollWidth > el.result.clientWidth && size > 22 && guard < 40){
-      size -= 2; guard++;
+    while (el.result.scrollWidth > el.result.clientWidth + 1 && size > 17 && guard < 60){
+      size -= 1; guard++;
       el.result.style.fontSize = size + "px";
     }
+    var over = el.result.scrollWidth > el.result.clientWidth + 1;
+    el.result.classList.toggle("clipped", over);
+    if (over) el.result.scrollLeft = el.result.scrollWidth;
+
+    var exprOver = el.expr.scrollWidth > el.expr.clientWidth + 1;
+    el.expr.classList.toggle("clipped", exprOver);
   }
 
   function render(settledNow){
