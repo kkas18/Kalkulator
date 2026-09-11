@@ -228,6 +228,7 @@
     font-family:inherit;font-size:15px;padding:15px 4px;cursor:pointer;
     border-top:1px solid var(--hair);
   }
+  .menu-item[hidden]{display:none}
   .menu-item:active{color:var(--muted)}
   .menu-item svg{width:17px;height:17px;flex:0 0 auto;fill:none;stroke:var(--muted);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .menu-item .item-sub{color:var(--muted);font-size:14px}
@@ -270,6 +271,43 @@
   .chip sup{font-size:.62em;vertical-align:super;line-height:0}
   .info-hint{font-size:13px;line-height:1.5;color:var(--muted);margin:12px 2px 2px}
 
+  /* bekreftelser og varsler */
+  #toast{
+    position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 52px);
+    transform:translate(-50%,-8px);z-index:8;
+    background:var(--ink);color:var(--ink-inv);
+    font-size:14px;padding:11px 18px;border-radius:16px;border:0;
+    font-family:inherit;max-width:82vw;text-align:center;
+    opacity:0;pointer-events:none;transition:opacity .22s ease,transform .22s ease;
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  #toast.tappable{pointer-events:auto;cursor:pointer}
+
+  .ghost{opacity:.38}
+  #result.copyable{cursor:pointer}
+
+  /* liggende skjerm: display til venstre, taster til høyre */
+  @media (orientation:landscape) and (max-height:560px){
+    #app{
+      display:grid;max-width:none;
+      grid-template-columns:1fr 1.15fr;grid-template-rows:auto auto auto 1fr;
+      column-gap:14px;
+    }
+    header{grid-column:1 / -1}
+    #display{grid-column:1;grid-row:2 / 5;padding-bottom:6px}
+    #tape{padding-bottom:6px}
+    .handle{grid-column:2;grid-row:2}
+    #sci{grid-column:2;grid-row:3}
+    #pad{grid-column:2;grid-row:4;height:auto;min-height:0;align-self:stretch}
+    #sci,#pad{max-width:480px;width:100%;justify-self:end}
+    .handle{justify-self:end;margin-right:calc(50% - 33px)}
+    #result{font-size:44px}
+    .key{font-size:22px;border-radius:18px}
+    #sci .key{height:32px;line-height:32px;font-size:15px}
+    html[data-sci="1"] #sci{max-height:120px}
+    html[data-sci="1"] #pad{height:auto}
+  }
+
   .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
   @media (max-height:700px){
@@ -308,6 +346,7 @@
   <div id="pad"></div>
 </div>
 
+<button id="toast" type="button" aria-live="polite"></button>
 <div id="scrim"></div>
 <section id="sheet" class="sheet" role="dialog" aria-modal="true" aria-label="Historikk" aria-hidden="true">
   <div class="grip"></div>
@@ -341,6 +380,10 @@
       <span>Vibrasjon ved trykk</span>
       <button class="switch" id="btnHaptics" role="switch" aria-checked="true" aria-label="Vibrasjon ved trykk"></button>
     </div>
+    <button class="menu-item" id="btnInstall" hidden>
+      <span>Installer på startskjermen</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/></svg>
+    </button>
     <button class="menu-item" id="btnHelpList">
       <span>Forklaringer på funksjonstastene</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
@@ -630,6 +673,27 @@
     hist: document.getElementById("histList"),
     meta: document.getElementById("metaTheme")
   };
+
+  /* ---------- korte beskjeder ---------- */
+  var toastEl = document.getElementById("toast");
+  var toastTimer = null, toastAction = null;
+  function toast(message, action){
+    toastEl.textContent = message;
+    toastAction = action || null;
+    toastEl.classList.toggle("tappable", !!action);
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){
+      toastEl.classList.remove("show");
+      toastAction = null;
+    }, action ? 8000 : 1800);
+  }
+  window.showToast = toast;
+  toastEl.addEventListener("click", function(){
+    if (toastAction) toastAction();
+    toastEl.classList.remove("show");
+    toastAction = null;
+  });
 
   /* ---------- lagring ---------- */
   function load(key, fallback){
@@ -1175,8 +1239,28 @@
     el.expr.classList.toggle("clipped", exprOver);
   }
 
+  function missingParens(){
+    var open = 0;
+    state.tokens.forEach(function(t){
+      if (t === "(") open++;
+      else if (t === ")") open--;
+    });
+    return Math.max(0, open);
+  }
+
   function render(settledNow){
-    el.expr.textContent = state.settled ? state.lastExpr : C.formatTokens(state.tokens);
+    if (state.settled){
+      el.expr.textContent = state.lastExpr;
+    } else {
+      el.expr.textContent = C.formatTokens(state.tokens);
+      var n = missingParens();
+      if (n){
+        var ghost = document.createElement("span");
+        ghost.className = "ghost";
+        ghost.textContent = new Array(n + 1).join(")");
+        el.expr.appendChild(ghost);
+      }
+    }
     el.expr.scrollLeft = el.expr.scrollWidth;
 
     if (state.settled){
@@ -1317,6 +1401,29 @@
 
   document.getElementById("btnMenu").addEventListener("click", openMenu);
 
+  /* installering: Android gir oss et tilbud vi kan hente fram fra menyen */
+  var installPrompt = null;
+  var installBtn = document.getElementById("btnInstall");
+  window.addEventListener("beforeinstallprompt", function(ev){
+    ev.preventDefault();
+    installPrompt = ev;
+    installBtn.hidden = false;
+  });
+  installBtn.addEventListener("click", function(){
+    if (!installPrompt) return;
+    closeMenu();
+    installPrompt.prompt();
+    installPrompt.userChoice.then(function(){
+      installPrompt = null;
+      installBtn.hidden = true;
+    });
+  });
+  window.addEventListener("appinstalled", function(){
+    installPrompt = null;
+    installBtn.hidden = true;
+    toast("Installert");
+  });
+
   [].forEach.call(document.querySelectorAll("#segTheme button"), function(b){
     b.addEventListener("click", function(){
       themeMode = b.dataset.themeMode;
@@ -1377,6 +1484,57 @@
     if (state.haptics && navigator.vibrate) navigator.vibrate(8);
   });
 
+  /* sveip på displayet: sideveis sletter, nedover åpner historikken */
+  (function(){
+    var sx = 0, sy = 0, tracking = false, moved = false;
+    el.display = document.getElementById("display");
+    el.display.addEventListener("pointerdown", function(ev){
+      tracking = true; moved = false; sx = ev.clientX; sy = ev.clientY;
+    });
+    el.display.addEventListener("pointermove", function(ev){
+      if (!tracking) return;
+      if (Math.abs(ev.clientX - sx) > 8 || Math.abs(ev.clientY - sy) > 8) moved = true;
+    });
+    el.display.addEventListener("pointerup", function(ev){
+      if (!tracking) return;
+      tracking = false;
+      var dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy) * 1.6){
+        press({ act: "back" });
+      } else if (dy > 60 && Math.abs(dy) > Math.abs(dx) * 1.6){
+        openSheet();
+      }
+    });
+    ["pointercancel", "pointerleave"].forEach(function(e){
+      el.display.addEventListener(e, function(){ tracking = false; });
+    });
+
+    /* trykk p\u00E5 svaret kopierer det */
+    el.result.addEventListener("click", function(){
+      if (moved) return;
+      var text = el.result.textContent.replace(/\u00A0/g, " ").replace(/\u2212/g, "-");
+      if (!text || text === "0" && !state.tokens.length) return;
+      if (el.result.classList.contains("error")) return;
+      function done(){
+        if (state.haptics && navigator.vibrate) navigator.vibrate(8);
+        toast("Kopiert: " + text);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done, function(){ toast("Kunne ikke kopiere"); });
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.setAttribute("readonly", "");
+        ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); done(); }
+        catch (e){ toast("Kunne ikke kopiere"); }
+        document.body.removeChild(ta);
+      }
+    });
+    el.result.classList.add("copyable");
+    el.result.setAttribute("title", "Trykk for \u00E5 kopiere");
+  })();
+
   /* fysisk tastatur */
   var KEYMAP = {
     "*": { act: "op", value: TIMES }, "x": { act: "op", value: TIMES },
@@ -1432,7 +1590,20 @@
     } catch (e){}
     if ("serviceWorker" in navigator && location.protocol !== "file:"){
       window.addEventListener("load", function(){
-        navigator.serviceWorker.register("sw.js").catch(function(){});
+        navigator.serviceWorker.register("sw.js").then(function(reg){
+          /* ny versjon lastet ned fra GitHub: la brukeren ta den i bruk med ett trykk */
+          reg.addEventListener("updatefound", function(){
+            var sw = reg.installing;
+            if (!sw) return;
+            sw.addEventListener("statechange", function(){
+              if (sw.state === "installed" && navigator.serviceWorker.controller){
+                window.showToast("Ny versjon klar \u2013 trykk for \u00E5 oppdatere", function(){
+                  location.reload();
+                });
+              }
+            });
+          });
+        }).catch(function(){});
       });
     }
   })();
