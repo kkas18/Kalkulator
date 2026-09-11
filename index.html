@@ -162,7 +162,7 @@
     opacity:0;pointer-events:none;transition:opacity .26s ease;z-index:5;
   }
   #scrim.show{opacity:1;pointer-events:auto}
-  #sheet{
+  .sheet{
     position:fixed;left:0;right:0;bottom:0;z-index:6;
     max-height:72dvh;display:flex;flex-direction:column;
     background:var(--sheet);color:var(--ink);
@@ -171,7 +171,7 @@
     transform:translateY(101%);transition:transform .3s cubic-bezier(.3,.85,.3,1);
     max-width:560px;margin:0 auto;
   }
-  #sheet.show{transform:none}
+  .sheet.show{transform:none}
   .grip{width:38px;height:4px;border-radius:2px;background:var(--hair);margin:2px auto 10px}
   .sheet-top{display:flex;align-items:center;justify-content:space-between;padding:2px 2px 8px}
   .sheet-top h2{font-size:16px;font-weight:500;margin:0;letter-spacing:-.01em}
@@ -201,6 +201,33 @@
   }
   .switch[aria-checked="true"]{background:var(--ink)}
   .switch[aria-checked="true"]::after{transform:translateX(18px)}
+  .key.has-help{position:relative}
+  .key.has-help::after{
+    content:"";position:absolute;left:50%;bottom:11px;transform:translateX(-50%);
+    width:4px;height:4px;border-radius:50%;background:var(--muted);opacity:.55;
+  }
+  #sci .key.has-help::after{bottom:4px;width:3px;height:3px;opacity:.45}
+  .key.eq.has-help::after{background:var(--ink-inv);opacity:.45}
+
+  .info-title{font-size:17px;font-weight:500;margin:2px 2px 10px;letter-spacing:-.01em}
+  #infoBody{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  .info-text{font-size:15px;line-height:1.55;margin:0 2px 14px;max-width:62ch}
+  .info-ex{
+    background:var(--surface);border-radius:16px;padding:13px 15px;
+    font-size:16px;margin:0 0 8px;font-variant-numeric:tabular-nums;
+  }
+  .info-ex b{font-weight:500}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;padding:14px 0 2px}
+  .chip{
+    border:0;background:var(--surface-2);color:var(--ink);font-family:inherit;
+    font-size:15px;padding:11px 15px;border-radius:14px;cursor:pointer;
+    font-variant-numeric:tabular-nums;transition:background-color .16s ease,transform .09s ease;
+  }
+  .chip:active{background:var(--surface-2-press);transform:scale(.96)}
+  .chip:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .chip sup{font-size:.62em;vertical-align:super;line-height:0}
+  .info-hint{font-size:13px;line-height:1.5;color:var(--muted);margin:12px 2px 2px}
+
   .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
   @media (max-height:700px){
@@ -239,7 +266,7 @@
 </div>
 
 <div id="scrim"></div>
-<section id="sheet" role="dialog" aria-modal="true" aria-label="Historikk" aria-hidden="true">
+<section id="sheet" class="sheet" role="dialog" aria-modal="true" aria-label="Historikk" aria-hidden="true">
   <div class="grip"></div>
   <div class="sheet-top">
     <h2>Historikk</h2>
@@ -250,6 +277,12 @@
     <span>Vibrasjon ved trykk</span>
     <button class="switch" id="btnHaptics" role="switch" aria-checked="true" aria-label="Vibrasjon ved trykk"></button>
   </div>
+</section>
+
+<section id="info" class="sheet" role="dialog" aria-modal="true" aria-labelledby="infoTitle" aria-hidden="true">
+  <div class="grip"></div>
+  <h2 class="info-title" id="infoTitle"></h2>
+  <div id="infoBody"></div>
 </section>
 
 <script id="calc-core">
@@ -602,6 +635,221 @@
     { id: "angle", label: "DEG", act: "angle", aria: "Bytt mellom grader og radianer" }
   ];
 
+
+  /* ---------- hjelp ved langt trykk ---------- */
+  var HELP = {
+    ac: {
+      t: "AC \u2013 nullstill",
+      b: "T\u00F8mmer hele regnestykket og starter p\u00E5 nytt. Svaret i historikken beholdes.",
+      ex: []
+    },
+    back: {
+      t: "Slett siste",
+      b: "Fjerner det siste sifferet eller tegnet du skrev, ett om gangen. Skal du t\u00F8mme alt, bruk AC.",
+      ex: []
+    },
+    percent: {
+      t: "% \u2013 prosent",
+      b: "Regner prosent av tallet som st\u00E5r foran. St\u00E5r prosenten alene, blir den gjort om til desimaltall.",
+      ex: ["200 + 10 % = <b>220</b>", "200 \u2212 25 % = <b>150</b>", "50 % = <b>0,5</b>"]
+    },
+    negate: {
+      t: "\u00B1 \u2013 bytt fortegn",
+      b: "Gj\u00F8r tallet negativt eller positivt. Skriv tallet f\u00F8rst, trykk s\u00E5 \u00B1.",
+      ex: ["5 \u00B1 = <b>\u22125</b>", "10 \u00D7 5 \u00B1 = <b>\u221250</b>"]
+    },
+    paren: {
+      t: "( ) \u2013 parenteser",
+      b: "Bestemmer hva som regnes ut f\u00F8rst. Uten parentes gjelder vanlig rekkef\u00F8lge: gange og deling f\u00F8r pluss og minus. Du trenger ikke lukke den siste parentesen \u2013 den lukkes automatisk.",
+      ex: ["2 + 3 \u00D7 4 = <b>14</b>", "( 2 + 3 ) \u00D7 4 = <b>20</b>"]
+    },
+    sqrt: {
+      t: "\u221A \u2013 kvadratrot",
+      b: "Finner tallet som ganget med seg selv gir tallet du skriver inn. Trykk \u221A f\u00F8rst, skriv tallet, og lukk parentesen hvis du skal regne videre.",
+      ex: ["\u221A( 9 ) = <b>3</b>", "\u221A( 2 ) = <b>1,414213562</b>"]
+    },
+    pow: {
+      t: "x\u02B8 \u2013 opph\u00F8yd i",
+      b: "Ganger tallet med seg selv s\u00E5 mange ganger du vil. Skriv grunntallet, trykk x\u02B8, og skriv eksponenten selv \u2013 eller velg en under.",
+      ex: ["2 x\u02B8 10 = <b>1\u00A0024</b>", "5 x\u02B8 0,5 = <b>2,236067977</b>"],
+      picker: true
+    },
+    square: {
+      t: "x\u00B2 \u2013 kvadrat",
+      b: "Ganger tallet med seg selv \u00E9n gang. Vil du ha en annen eksponent enn 2, velg den under, eller bruk x\u02B8 og skriv tallet selv.",
+      ex: ["9 x\u00B2 = <b>81</b>", "\u03C0 \u00D7 5 x\u00B2 = <b>78,53981634</b> (arealet av en sirkel med radius 5)"],
+      picker: true
+    },
+    fact: {
+      t: "n! \u2013 fakultet",
+      b: "Ganger sammen alle hele tall fra 1 opp til tallet. Brukes n\u00E5r du skal telle kombinasjoner og rekkef\u00F8lger. Virker bare p\u00E5 hele tall fra 0 til 170.",
+      ex: ["5 n! = <b>120</b>  (1 \u00D7 2 \u00D7 3 \u00D7 4 \u00D7 5)", "0 n! = <b>1</b>"]
+    },
+    trig: {
+      t: "sin, cos og tan",
+      b: "Regner forholdet mellom sidene i en rettvinklet trekant ut fra vinkelen. Vinkelen leses som grader n\u00E5r DEG st\u00E5r p\u00E5, og som radianer n\u00E5r det st\u00E5r RAD. Med INV f\u00F8r du den motsatte veien: fra forhold til vinkel.",
+      ex: ["sin( 30 ) = <b>0,5</b>", "tan( 45 ) = <b>1</b>", "INV sin( 0,5 ) = <b>30</b>"]
+    },
+    ln: {
+      t: "ln \u2013 naturlig logaritme",
+      b: "Svarer p\u00E5 hvor mange ganger e m\u00E5 ganges med seg selv for \u00E5 gi tallet. Brukes til vekst og halveringstid. Med INV blir tasten e\u02E3, som er den motsatte regningen.",
+      ex: ["ln( e ) = <b>1</b>", "ln( 100 ) = <b>4,605170186</b>"]
+    },
+    log: {
+      t: "log \u2013 titallslogaritme",
+      b: "Svarer p\u00E5 hvor mange ganger 10 m\u00E5 ganges med seg selv for \u00E5 gi tallet. Med INV blir tasten 10\u02E3, som er den motsatte regningen.",
+      ex: ["log( 1000 ) = <b>3</b>", "INV log( 3 ) = <b>1\u00A0000</b>"]
+    },
+    pi: {
+      t: "\u03C0 \u2013 pi",
+      b: "Forholdet mellom omkretsen og diameteren i en sirkel, 3,141592653\u2026 Skriv \u03C0 der du ellers ville skrevet et tall.",
+      ex: ["\u03C0 \u00D7 5 x\u00B2 = <b>78,53981634</b>", "2 \u00D7 \u03C0 \u00D7 5 = <b>31,41592654</b>"]
+    },
+    euler: {
+      t: "e \u2013 Eulers tall",
+      b: "Grunntallet for naturlig logaritme, 2,718281828\u2026 Brukes i renteregning og vekst.",
+      ex: ["e x\u02B8 2 = <b>7,389056099</b>", "ln( e ) = <b>1</b>"]
+    },
+    inv: {
+      t: "INV \u2013 omvendte funksjoner",
+      b: "Sn\u00FCr funksjonstastene: sin blir sin\u207B\u00B9, ln blir e\u02E3, log blir 10\u02E3 og \u221A blir x\u00B2. Den gjelder for \u00E9tt trykk og sl\u00E5r seg av etterp\u00E5.",
+      ex: ["INV sin( 0,5 ) = <b>30</b>", "INV ln( 1 ) = <b>2,718281828</b>"]
+    },
+    angle: {
+      t: "DEG og RAD \u2013 vinkelm\u00E5l",
+      b: "Velger hvordan vinkler leses. DEG er grader, med 360 i en hel sirkel \u2013 det vanlige i geometri. RAD er radianer, med 2\u03C0 i en hel sirkel \u2013 det vanlige i matematikk og fysikk. Valget vises \u00F8verst n\u00E5r RAD er p\u00E5.",
+      ex: ["DEG: sin( 90 ) = <b>1</b>", "RAD: sin( \u03C0 \u00F7 2 ) = <b>1</b>"]
+    }
+  };
+
+  function helpFor(k){
+    if (k.act === "fn") return HELP.trig;
+    if (k.act === "const") return k.value === PI ? HELP.pi : HELP.euler;
+    if (k.act === "clear") return HELP.ac;
+    return HELP[k.act];
+  }
+
+  var POWERS = [
+    { label: "x<sup>\u22121</sup>", exp: "-1" },
+    { label: "x<sup>2</sup>", exp: "2" },
+    { label: "x<sup>3</sup>", exp: "3" },
+    { label: "x<sup>4</sup>", exp: "4" },
+    { label: "x<sup>5</sup>", exp: "5" },
+    { label: "x<sup>10</sup>", exp: "10" },
+    { label: "Eget tall", exp: null }
+  ];
+
+  function hasBase(){
+    var t = last();
+    return C.isNum(t) || t === ")" || t === PI || t === "e" || t === "!" || t === "\u00B2";
+  }
+
+  function insertPower(exp){
+    if (state.settled && state.result !== null){
+      state.tokens = [String(state.result)];
+      state.settled = false;
+    }
+    if (!hasBase()) return false;
+    pushOp("^");
+    if (exp !== null){
+      var digits = exp;
+      if (digits.charAt(0) === "-"){
+        state.tokens.push(MINUS);
+        digits = digits.slice(1);
+      }
+      for (var i = 0; i < digits.length; i++) pushDigit(digits.charAt(i));
+    }
+    render(false);
+    return true;
+  }
+
+  function openInfo(help){
+    var body = document.getElementById("infoBody");
+    document.getElementById("infoTitle").textContent = help.t;
+    body.innerHTML = "";
+
+    var p = document.createElement("p");
+    p.className = "info-text";
+    p.textContent = help.b;
+    body.appendChild(p);
+
+    help.ex.forEach(function(line){
+      var d = document.createElement("div");
+      d.className = "info-ex";
+      d.innerHTML = line;
+      body.appendChild(d);
+    });
+
+    if (help.picker){
+      var chips = document.createElement("div");
+      chips.className = "chips";
+      POWERS.forEach(function(pw){
+        var b = document.createElement("button");
+        b.className = "chip";
+        b.innerHTML = pw.label;
+        b.setAttribute("aria-label", pw.exp === null ? "Skriv eksponenten selv" : "Opph\u00F8y i " + pw.exp);
+        b.addEventListener("click", function(){
+          if (state.haptics && navigator.vibrate) navigator.vibrate(8);
+          if (insertPower(pw.exp)) closeInfo();
+        });
+        chips.appendChild(b);
+      });
+      body.appendChild(chips);
+
+      var hint = document.createElement("p");
+      hint.className = "info-hint";
+      hint.textContent = "Skriv tallet f\u00F8rst, velg s\u00E5 eksponent. \u00ABEget tall\u00BB setter inn potenstegnet slik at du kan skrive hvilken som helst eksponent, ogs\u00E5 desimaltall.";
+      body.appendChild(hint);
+    }
+
+    document.getElementById("info").classList.add("show");
+    document.getElementById("info").setAttribute("aria-hidden", "false");
+    el.scrim.classList.add("show");
+  }
+
+  function closeInfo(){
+    var info = document.getElementById("info");
+    info.classList.remove("show");
+    info.setAttribute("aria-hidden", "true");
+    if (!el.sheet.classList.contains("show")) el.scrim.classList.remove("show");
+  }
+
+  function attachHelp(btn, k){
+    var help = helpFor(k);
+    if (!help) return;
+    btn.classList.add("has-help");
+    btn.setAttribute("aria-label", btn.getAttribute("aria-label") + ", hold inne for forklaring");
+
+    var timer = null, fired = false, sx = 0, sy = 0;
+    function cancel(){ clearTimeout(timer); timer = null; }
+
+    btn.addEventListener("click", function(ev){
+      if (fired){
+        fired = false;
+        ev.stopImmediatePropagation();
+        ev.preventDefault();
+      }
+    }, true);
+
+    btn.addEventListener("pointerdown", function(ev){
+      fired = false; sx = ev.clientX; sy = ev.clientY;
+      cancel();
+      timer = setTimeout(function(){
+        fired = true;
+        if (state.haptics && navigator.vibrate) navigator.vibrate([0, 14]);
+        openInfo(help);
+        setTimeout(function(){ fired = false; }, 700);
+      }, 420);
+    });
+    btn.addEventListener("pointermove", function(ev){
+      if (Math.abs(ev.clientX - sx) > 10 || Math.abs(ev.clientY - sy) > 10) cancel();
+    });
+    ["pointerup", "pointerleave", "pointercancel"].forEach(function(e){
+      btn.addEventListener(e, cancel);
+    });
+    btn.addEventListener("contextmenu", function(ev){ ev.preventDefault(); });
+  }
+
   function build(list, container, cls){
     container.innerHTML = "";
     list.forEach(function(k){
@@ -611,6 +859,7 @@
       b.setAttribute("aria-label", k.aria || b.textContent);
       if (k.id) b.dataset.id = k.id;
       b.addEventListener("click", function(){ press(k); });
+      attachHelp(b, k);
       container.appendChild(b);
     });
   }
@@ -934,7 +1183,7 @@
   document.documentElement.setAttribute("data-sci", "0");
 
   document.getElementById("btnHist").addEventListener("click", openSheet);
-  el.scrim.addEventListener("click", closeSheet);
+  el.scrim.addEventListener("click", function(){ closeSheet(); closeInfo(); });
   document.getElementById("btnClearHist").addEventListener("click", function(){
     state.history = [];
     save("history", state.history);
@@ -946,21 +1195,6 @@
     save("haptics", state.haptics);
     if (state.haptics && navigator.vibrate) navigator.vibrate(8);
   });
-
-  /* langt trykk på AC/slett tømmer alt */
-  (function(){
-    var backBtn = el.pad.children[1], timer = null;
-    backBtn.addEventListener("pointerdown", function(){
-      timer = setTimeout(function(){
-        state.tokens = []; state.result = null; state.settled = false;
-        if (state.haptics && navigator.vibrate) navigator.vibrate([0, 12]);
-        render(false);
-      }, 480);
-    });
-    ["pointerup", "pointerleave", "pointercancel"].forEach(function(ev){
-      backBtn.addEventListener(ev, function(){ clearTimeout(timer); });
-    });
-  })();
 
   /* fysisk tastatur */
   var KEYMAP = {
@@ -977,7 +1211,12 @@
     if (/^\d$/.test(k)) { press({ act: "digit", value: k }); ev.preventDefault(); return; }
     if (k === "Enter" || k === "=") { press({ act: "equals" }); ev.preventDefault(); return; }
     if (k === "Backspace") { press({ act: "back" }); ev.preventDefault(); return; }
-    if (k === "Escape") { press({ act: "clear" }); ev.preventDefault(); return; }
+    if (k === "Escape") {
+      if (document.getElementById("info").classList.contains("show")) closeInfo();
+      else if (el.sheet.classList.contains("show")) closeSheet();
+      else press({ act: "clear" });
+      ev.preventDefault(); return;
+    }
     if (KEYMAP[k]) { press(KEYMAP[k]); ev.preventDefault(); }
   });
 
