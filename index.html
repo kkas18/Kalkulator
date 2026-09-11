@@ -613,7 +613,8 @@
     deg: true,
     inv: false,
     haptics: true,
-    history: []
+    history: [],
+    tape: []
   };
 
   var el = {
@@ -1062,7 +1063,7 @@
   }
 
   function equals(){
-    if (!state.tokens.length) return;
+    if (!state.tokens.length || state.settled) return;
     var value;
     try {
       value = C.evaluate(state.tokens, state.deg);
@@ -1071,11 +1072,17 @@
       return;
     }
     state.lastExpr = C.formatTokens(state.tokens);
-    state.history.unshift({ e: state.lastExpr, r: C.formatNumber(value) });
-    state.history = state.history.slice(0, 40);
-    save("history", state.history);
-    renderHistory();
-    renderTape();
+    /* et enkelt tall er ingen utregning – det skal ikke fylle opp remsa */
+    if (!(state.tokens.length === 1 && C.isNum(state.tokens[0]))){
+      var entry = { e: state.lastExpr, r: C.formatNumber(value) };
+      state.history.unshift(entry);
+      state.history = state.history.slice(0, 40);
+      save("history", state.history);
+      state.tape.unshift(entry);
+      state.tape = state.tape.slice(0, 3);
+      renderHistory();
+      renderTape();
+    }
     state.result = value;
     state.tokens = [String(value)];
     state.settled = true;
@@ -1095,7 +1102,10 @@
       case "digit": pushDigit(k.value); break;
       case "decimal": pushDecimal(); break;
       case "op": pushOp(k.value); break;
-      case "clear": state.tokens = []; state.result = null; state.settled = false; break;
+      case "clear":
+        state.tokens = []; state.result = null; state.settled = false; state.lastExpr = "";
+        state.tape = []; renderTape();
+        break;
       case "back": backspace(); break;
       case "negate": negate(); break;
       case "percent": state.tokens = C.applyPercent(state.tokens); break;
@@ -1197,7 +1207,7 @@
   function renderTape(){
     var tape = document.getElementById("tape");
     tape.innerHTML = "";
-    state.history.slice(0, 3).reverse().forEach(function(h){
+    state.tape.slice(0, 3).reverse().forEach(function(h){
       var b = document.createElement("button");
       b.className = "tape-row";
       b.textContent = h.e + " = " + h.r;
@@ -1333,6 +1343,7 @@
 
   document.getElementById("btnClearAll").addEventListener("click", function(){
     state.history = [];
+    state.tape = [];
     save("history", state.history);
     renderHistory();
     renderTape();
@@ -1354,6 +1365,7 @@
   el.scrim.addEventListener("click", closeAll);
   document.getElementById("btnClearHist").addEventListener("click", function(){
     state.history = [];
+    state.tape = [];
     save("history", state.history);
     renderHistory();
     renderTape();
