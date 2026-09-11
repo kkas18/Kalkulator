@@ -60,7 +60,7 @@
   }
 
   /* ---------- topplinje ---------- */
-  header{display:flex;align-items:center;justify-content:space-between;height:40px;flex:0 0 auto;margin:0 -6px}
+  header{display:flex;align-items:center;justify-content:space-between;height:40px;flex:0 0 auto;margin:0 -6px;padding-left:12px}
   .icon-btn{
     width:42px;height:42px;display:grid;place-items:center;
     border:0;background:transparent;color:var(--muted);
@@ -78,6 +78,7 @@
   /* ---------- display ---------- */
   #display{
     flex:1 1 auto;min-height:0;
+    touch-action:none;-webkit-touch-callout:none;
     display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-end;
     gap:4px;padding:0 6px 12px;overflow:hidden;
   }
@@ -100,14 +101,14 @@
     width:100%;text-align:right;color:var(--muted);
     font-size:21px;font-weight:400;letter-spacing:-.01em;line-height:1.3;
     white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
-    min-height:28px;
+    touch-action:none;min-height:28px;
   }
   #expr::-webkit-scrollbar{display:none}
   #result{
     width:100%;text-align:right;
     font-size:60px;font-weight:300;letter-spacing:-.025em;line-height:1.15;
     white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
-    padding-left:2px;
+    touch-action:none;padding-left:2px;
     transition:color .2s ease;
   }
   #result::-webkit-scrollbar{display:none}
@@ -125,7 +126,7 @@
 
   /* ---------- håndtak ---------- */
   .handle{
-    flex:0 0 auto;align-self:center;
+    flex:0 0 auto;align-self:center;touch-action:none;
     width:66px;height:22px;margin-bottom:2px;
     display:grid;place-items:center;
     border:0;background:transparent;color:var(--muted);border-radius:13px;cursor:pointer;
@@ -152,6 +153,7 @@
 
   .key{
     border:0;border-radius:var(--r-key);
+    touch-action:none;-webkit-touch-callout:none;
     background:var(--surface);color:var(--ink);
     font-family:inherit;font-size:26px;font-weight:400;letter-spacing:-.01em;
     font-variant-numeric:tabular-nums;
@@ -233,7 +235,7 @@
   .menu-item svg{width:17px;height:17px;flex:0 0 auto;fill:none;stroke:var(--muted);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .menu-item .item-sub{color:var(--muted);font-size:14px}
   #menuBody,#helpBody{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-  .app-note{font-size:13px;color:var(--muted);text-align:center;padding:16px 0 2px}
+  .app-note{font-size:13px;line-height:1.55;color:var(--muted);text-align:center;padding:18px 0 2px}
   .switch{
     width:46px;height:28px;border-radius:14px;border:0;background:var(--surface-2);
     position:relative;cursor:pointer;transition:background-color .2s ease;flex:0 0 auto;
@@ -323,9 +325,6 @@
 <body>
 <div id="app">
   <header>
-    <button class="icon-btn" id="btnHist" aria-label="Historikk">
-      <svg viewBox="0 0 24 24"><path d="M3.6 12a8.4 8.4 0 1 0 2.5-6"/><path d="M5.6 3.6v3.1h3.1"/><path d="M12 7.7V12l3 1.8"/></svg>
-    </button>
     <span class="angle-tag" id="angleTag">DEG</span>
     <button class="icon-btn" id="btnMenu" aria-label="Meny">
       <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -388,11 +387,7 @@
       <span>Forklaringer på funksjonstastene</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
     </button>
-    <button class="menu-item" id="btnClearAll">
-      <span>Tøm historikken</span>
-      <span class="item-sub" id="histCount"></span>
-    </button>
-    <p class="app-note">Hold inne en tast med prikk for å få forklaringen direkte.</p>
+    <p class="app-note">Sveip nedover på displayet for historikken, sideveis for å slette.<br>Hold inne en tast med prikk for å få forklaringen direkte.</p>
   </div>
 </section>
 
@@ -970,9 +965,13 @@
     btn.addEventListener("pointermove", function(ev){
       if (Math.abs(ev.clientX - sx) > 10 || Math.abs(ev.clientY - sy) > 10) cancel();
     });
-    ["pointerup", "pointerleave", "pointercancel"].forEach(function(e){
+    ["pointerup", "pointerleave"].forEach(function(e){
       btn.addEventListener(e, cancel);
     });
+    /* pointercancel kommer når nettleseren vil tolke trykket selv: hold forklaringen i live
+       hvis fingeren allerede har stått lenge nok */
+    btn.addEventListener("pointercancel", cancel);
+    btn.addEventListener("touchstart", function(ev){ if (ev.cancelable) ev.preventDefault(); }, { passive: false });
     btn.addEventListener("contextmenu", function(ev){ ev.preventDefault(); });
   }
 
@@ -988,13 +987,18 @@
          umiddelbar respons. Taster med forklaring venter til fingeren slippes,
          slik at et langt trykk ikke også setter inn et tegn. */
       var hasHelp = !!helpFor(k);
+      var lastPointer = 0;
       b.addEventListener(hasHelp ? "pointerup" : "pointerdown", function(ev){
         if (ev.button && ev.button !== 0) return;
+        lastPointer = Date.now();
         if (b.dataset.helpFired === "1"){ b.dataset.helpFired = "0"; return; }
         press(k);
       });
-      /* tastaturbruk: click uten peker (detail 0) */
-      b.addEventListener("click", function(ev){ if (ev.detail === 0) press(k); });
+      /* tastaturbruk: click som ikke kommer fra en peker */
+      b.addEventListener("click", function(){
+        if (Date.now() - lastPointer < 1000) return;
+        press(k);
+      });
       attachHelp(b, k);
       container.appendChild(b);
     });
@@ -1371,8 +1375,6 @@
   }
 
   function openMenu(){
-    document.getElementById("histCount").textContent =
-      state.history.length ? state.history.length + " lagret" : "tom";
     el.menu.classList.add("show");
     el.menu.setAttribute("aria-hidden", "false");
     el.scrim.classList.add("show");
@@ -1475,15 +1477,6 @@
     openHelpList();
   });
 
-  document.getElementById("btnClearAll").addEventListener("click", function(){
-    state.history = [];
-    state.tape = [];
-    save("history", state.history);
-    renderHistory();
-    renderTape();
-    closeMenu();
-  });
-
   el.handle.addEventListener("click", function(){
     var open = document.documentElement.getAttribute("data-sci") === "1";
     document.documentElement.setAttribute("data-sci", open ? "0" : "1");
@@ -1495,7 +1488,6 @@
   });
   document.documentElement.setAttribute("data-sci", "0");
 
-  document.getElementById("btnHist").addEventListener("click", openSheet);
   el.scrim.addEventListener("click", closeAll);
   document.getElementById("btnClearHist").addEventListener("click", function(){
     state.history = [];
@@ -1513,31 +1505,35 @@
 
   /* sveip på displayet: sideveis sletter, nedover åpner historikken */
   (function(){
-    var sx = 0, sy = 0, tracking = false, moved = false;
+    var sx = 0, sy = 0, lx = 0, ly = 0, tracking = false, moved = false;
     el.display = document.getElementById("display");
+
+    function finish(){
+      if (!tracking) return;
+      tracking = false;
+      var dx = lx - sx, dy = ly - sy;
+      if (Math.abs(dx) > 42 && Math.abs(dx) > Math.abs(dy) * 1.4){
+        press({ act: "back" });
+      } else if (dy > 54 && Math.abs(dy) > Math.abs(dx) * 1.4){
+        openSheet();
+      }
+    }
+
     el.display.addEventListener("pointerdown", function(ev){
-      tracking = true; moved = false; sx = ev.clientX; sy = ev.clientY;
+      tracking = true; moved = false;
+      sx = lx = ev.clientX; sy = ly = ev.clientY;
     });
     el.display.addEventListener("pointermove", function(ev){
       if (!tracking) return;
-      if (Math.abs(ev.clientX - sx) > 8 || Math.abs(ev.clientY - sy) > 8) moved = true;
+      lx = ev.clientX; ly = ev.clientY;
+      if (Math.abs(lx - sx) > 8 || Math.abs(ly - sy) > 8) moved = true;
     });
-    el.display.addEventListener("pointerup", function(ev){
-      if (!tracking) return;
-      tracking = false;
-      var dx = ev.clientX - sx, dy = ev.clientY - sy;
-      if (Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy) * 1.6){
-        press({ act: "back" });
-      } else if (dy > 60 && Math.abs(dy) > Math.abs(dx) * 1.6){
-        openSheet();
-      }
-    });
-    ["pointercancel", "pointerleave"].forEach(function(e){
-      el.display.addEventListener(e, function(){ tracking = false; });
-    });
+    el.display.addEventListener("pointerup", finish);
+    /* Chrome avbryter pekeren når den tror brukeren vil rulle – sveipet skal telle likevel */
+    el.display.addEventListener("pointercancel", finish);
 
     /* trykk p\u00E5 svaret kopierer det */
-    el.result.addEventListener("click", function(){
+    function copyResult(){
       if (moved) return;
       var text = el.result.textContent.replace(/\u00A0/g, " ").replace(/\u2212/g, "-");
       if (!text || text === "0" && !state.tokens.length) return;
@@ -1557,7 +1553,15 @@
         catch (e){ toast("Kunne ikke kopiere"); }
         document.body.removeChild(ta);
       }
-    });
+    }
+    var lastCopy = 0;
+    function copyOnce(){
+      if (Date.now() - lastCopy < 600) return;
+      lastCopy = Date.now();
+      copyResult();
+    }
+    el.result.addEventListener("pointerup", copyOnce);
+    el.result.addEventListener("click", copyOnce);
     el.result.classList.add("copyable");
     el.result.setAttribute("title", "Trykk for \u00E5 kopiere");
   })();
